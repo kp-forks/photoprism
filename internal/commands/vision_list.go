@@ -17,7 +17,7 @@ import (
 var VisionListCommand = &cli.Command{
 	Name:   "ls",
 	Usage:  "Lists the configured computer vision models",
-	Flags:  append(report.CliFlags),
+	Flags:  report.CliFlags,
 	Action: visionListAction,
 }
 

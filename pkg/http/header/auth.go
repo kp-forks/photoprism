@@ -1,7 +1,7 @@
 package header
 
 import (
-	"crypto/sha1"
+	"crypto/sha1" //nolint:gosec // SHA1 retained for legacy cache key hashing
 	"encoding/base64"
 	"fmt"
 	"net/http"
@@ -13,7 +13,7 @@ import (
 // Authentication header names.
 const (
 	Auth       = "Authorization" // https://developer.mozilla.org/en-US/docs/Web/HTTP/Headers/Authorization
-	XAuthToken = "X-Auth-Token"
+	XAuthToken = "X-Auth-Token"  //nolint:gosec // header name, not a secret
 	XSessionID = "X-Session-ID"
 )
 
@@ -98,7 +98,7 @@ func BasicAuth(c *gin.Context) (username, password, cacheKey string) {
 		return "", "", ""
 	}
 
-	cacheKey = fmt.Sprintf("%x", sha1.Sum([]byte(authToken)))
+	cacheKey = fmt.Sprintf("%x", sha1.Sum([]byte(authToken))) //nolint:gosec // cache key only
 
 	return credentials[0], credentials[1], cacheKey
 }

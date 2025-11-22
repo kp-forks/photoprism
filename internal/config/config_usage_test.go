@@ -25,7 +25,7 @@ func TestConfig_Usage(t *testing.T) {
 
 	t.Logf("Storage Used: %d MB (%d%%), Free: %d MB (%d%%), Total %d MB", result2.FilesUsed/duf.MB, result2.FilesUsedPct, result2.FilesFree/duf.MB, result2.FilesFreePct, result2.FilesTotal/duf.MB)
 
-	//result cached
+	// result cached
 	assert.GreaterOrEqual(t, result2.FilesUsed, uint64(60000000))
 	assert.GreaterOrEqual(t, result2.FilesTotal, uint64(60000000))
 

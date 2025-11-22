@@ -16,20 +16,25 @@ import (
 )
 
 const (
+	// OidcDefaultProviderName is the default display name for the built-in OIDC provider.
 	OidcDefaultProviderName = "OpenID"
+	// OidcDefaultProviderIcon is the default icon path for the built-in OIDC provider.
 	OidcDefaultProviderIcon = "img/oidc.svg"
-	OidcLoginUri            = ApiUri + "/oidc/login"
-	OidcRedirectUri         = ApiUri + "/oidc/redirect"
+	// OidcLoginUri is the login endpoint path for OIDC.
+	OidcLoginUri = ApiUri + "/oidc/login"
+	// OidcRedirectUri is the callback endpoint path for OIDC.
+	OidcRedirectUri = ApiUri + "/oidc/redirect"
 )
 
 // OIDCEnabled checks if sign-on via OpenID Connect (OIDC) is fully configured and enabled.
 func (c *Config) OIDCEnabled() bool {
-	if c.options.DisableOIDC {
+	switch {
+	case c.options.DisableOIDC:
 		return false
-	} else if !c.SiteHttps() {
+	case !c.SiteHttps():
 		// Site URL must start with "https://".
 		return false
-	} else if !strings.HasPrefix(c.options.OIDCUri, "https://") {
+	case !strings.HasPrefix(c.options.OIDCUri, "https://"):
 		// OIDC provider URI must start with "https://".
 		return false
 	}
@@ -65,7 +70,7 @@ func (c *Config) OIDCSecret() string {
 	} else if fileName := FlagFilePath("OIDC_SECRET"); fileName == "" {
 		// No secret set, this is not an error.
 		return ""
-	} else if b, err := os.ReadFile(fileName); err != nil || len(b) == 0 {
+	} else if b, err := os.ReadFile(fileName); err != nil || len(b) == 0 { //nolint:gosec // path derived from config directory
 		log.Warnf("config: failed to read OIDC client secret from %s (%s)", fileName, err)
 		return ""
 	} else {

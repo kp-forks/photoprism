@@ -55,7 +55,7 @@ func Copy(src, dest string, force bool) (err error) {
 		return err
 	}
 
-	thisFile, err := os.Open(src)
+	thisFile, err := os.Open(src) //nolint:gosec // src is validated by callers
 
 	if err != nil {
 		return err
@@ -64,7 +64,7 @@ func Copy(src, dest string, force bool) (err error) {
 	defer thisFile.Close()
 
 	// Open destination for write; create or truncate to avoid trailing bytes
-	destFile, err := os.OpenFile(dest, os.O_WRONLY|os.O_CREATE|os.O_TRUNC, ModeFile)
+	destFile, err := os.OpenFile(dest, os.O_WRONLY|os.O_CREATE|os.O_TRUNC, ModeFile) //nolint:gosec // dest is derived from validated input
 
 	if err != nil {
 		return err
@@ -136,9 +136,5 @@ func Move(src, dest string, force bool) (err error) {
 		return err
 	}
 
-	if err = os.Remove(src); err != nil {
-		return err
-	}
-
-	return nil
+	return os.Remove(src)
 }

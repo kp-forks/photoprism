@@ -2,6 +2,8 @@ package fs
 
 import (
 	"archive/zip"
+	"encoding/binary"
+	"math"
 	"os"
 	"path/filepath"
 	"runtime"
@@ -12,7 +14,7 @@ import (
 
 func writeZip(t *testing.T, path string, entries map[string][]byte) {
 	t.Helper()
-	f, err := os.Create(path)
+	f, err := os.Create(path) //nolint:gosec // test helper creates temp zip file
 	if err != nil {
 		t.Fatal(err)
 	}
@@ -60,7 +62,7 @@ func TestUnzip_SkipRulesAndLimits(t *testing.T) {
 	// ok2 (1 byte) allowed; total limit reduces to 2; nothing else left that fits
 	assert.ElementsMatch(t, []string{filepath.Join(outDir, "ok2.txt")}, files)
 	// Ensure file written
-	b, rerr := os.ReadFile(filepath.Join(outDir, "ok2.txt"))
+	b, rerr := os.ReadFile(filepath.Join(outDir, "ok2.txt")) //nolint:gosec // test helper reads temp file
 	assert.NoError(t, rerr)
 	assert.Equal(t, []byte("x"), b)
 	// Skipped contains at least the three excluded entries
@@ -145,6 +147,150 @@ func TestUnzip_CreatesDirectoriesAndNestedFiles(t *testing.T) {
 	}
 	if fi, err := os.Stat(filepath.Join(outDir, "nested/sub")); err != nil || !fi.IsDir() {
 		t.Fatalf("nested subdir missing")
+	}
+}
+
+func TestUnzip_SkipsVeryLargeEntry(t *testing.T) {
+	dir := t.TempDir()
+	zipPath := filepath.Join(dir, "huge.zip")
+
+	writeZip64Stub(t, zipPath, "huge.bin", math.MaxUint64)
+
+	files, skipped, err := Unzip(zipPath, filepath.Join(dir, "out"), 0, -1)
+	assert.NoError(t, err)
+	assert.Empty(t, files)
+	assert.Contains(t, skipped, "huge.bin")
+}
+
+// writeZip64Stub writes a minimal ZIP64 archive with one stored entry and custom size values.
+func writeZip64Stub(t *testing.T, path, name string, size uint64) {
+	t.Helper()
+
+	var buf []byte
+
+	bw := func(data []byte) {
+		buf = append(buf, data...)
+	}
+
+	writeLE := func(v any) {
+		var b [8]byte
+		switch x := v.(type) {
+		case uint16:
+			binary.LittleEndian.PutUint16(b[:2], x)
+			bw(b[:2])
+		case uint32:
+			binary.LittleEndian.PutUint32(b[:4], x)
+			bw(b[:4])
+		case uint64:
+			binary.LittleEndian.PutUint64(b[:8], x)
+			bw(b[:8])
+		default:
+			t.Fatalf("unsupported type %T", v)
+		}
+	}
+
+	filename := []byte(name)
+	const (
+		sigLocal   = 0x04034b50
+		sigCentral = 0x02014b50
+		sigEnd     = 0x06054b50
+	)
+
+	zip64ExtraLen := uint16(4 + 16) // header id + size + two uint64 values
+	localExtraLen := zip64ExtraLen
+	centralExtraLen := zip64ExtraLen
+
+	// Local file header
+	writeLE(uint32(sigLocal))
+	writeLE(uint16(45)) // version needed (zip64)
+	writeLE(uint16(0))  // flags
+	writeLE(uint16(0))  // method store
+	writeLE(uint16(0))  // mod time
+	writeLE(uint16(0))  // mod date
+	writeLE(uint32(0))  // crc
+	writeLE(uint32(0xFFFFFFFF))
+	writeLE(uint32(0xFFFFFFFF))
+	if len(filename) > math.MaxUint16 {
+		t.Fatalf("filename too long")
+	}
+	writeLE(uint16(len(filename))) //nolint:gosec // filename length checked above
+	writeLE(localExtraLen)
+	bw(filename)
+	// zip64 extra
+	writeLE(uint16(0x0001)) // header id
+	writeLE(uint16(16))     // data size
+	writeLE(size)           // uncompressed size
+	writeLE(size)           // compressed size
+	// no file data (size 0) to keep archive tiny
+
+	localLen := len(buf)
+
+	// Central directory header
+	writeLE(uint32(sigCentral))
+	writeLE(uint16(45)) // version made by
+	writeLE(uint16(45)) // version needed
+	writeLE(uint16(0))  // flags
+	writeLE(uint16(0))  // method
+	writeLE(uint16(0))  // time
+	writeLE(uint16(0))  // date
+	writeLE(uint32(0))  // crc
+	writeLE(uint32(0xFFFFFFFF))
+	writeLE(uint32(0xFFFFFFFF))
+	if len(filename) > math.MaxUint16 {
+		t.Fatalf("filename too long")
+	}
+	writeLE(uint16(len(filename))) //nolint:gosec // filename length checked above
+	writeLE(centralExtraLen)
+	writeLE(uint16(0)) // comment len
+	writeLE(uint16(0)) // disk start
+	writeLE(uint16(0)) // int attrs
+	writeLE(uint32(0)) // ext attrs
+	writeLE(uint32(0)) // rel offset (zip64 overrides)
+	bw(filename)
+	// zip64 extra
+	writeLE(uint16(0x0001))
+	writeLE(uint16(16))
+	writeLE(size) // uncompressed
+	writeLE(size) // compressed
+
+	centralLen := len(buf) - localLen
+
+	// End of central directory (not zip64 EOCD; minimal to satisfy reader)
+	writeLE(uint32(sigEnd))
+	writeLE(uint16(0)) // disk
+	writeLE(uint16(0)) // start disk
+	writeLE(uint16(1)) // entries this disk
+	writeLE(uint16(1)) // total entries
+	if centralLen > math.MaxUint32 || localLen > math.MaxUint32 {
+		t.Fatalf("central or local length exceeds uint32")
+	}
+	writeLE(uint32(centralLen)) //nolint:gosec // lengths checked above
+	writeLE(uint32(localLen))   //nolint:gosec
+	writeLE(uint16(0))          // comment length
+
+	if err := os.WriteFile(path, buf, 0o600); err != nil {
+		t.Fatal(err)
+	}
+}
+
+func TestUnzipFileWithLimit_DetectsOverrun(t *testing.T) {
+	dir := t.TempDir()
+	zipPath := filepath.Join(dir, "small.zip")
+	writeZip(t, zipPath, map[string][]byte{"a.txt": []byte("abc")}) // 3 bytes
+
+	r, err := zip.OpenReader(zipPath)
+	if err != nil {
+		t.Fatal(err)
+	}
+	defer r.Close()
+
+	if len(r.File) != 1 {
+		t.Fatalf("expected one file, got %d", len(r.File))
+	}
+
+	_, err = unzipFileWithLimit(r.File[0], dir, 1) // limit below actual size
+	if err == nil {
+		t.Fatalf("expected limit overrun error")
 	}
 }
 

@@ -1,7 +1,6 @@
 package config
 
 import (
-	"errors"
 	"fmt"
 	"net/url"
 	"os"
@@ -333,10 +332,10 @@ func (o *Options) Load(fileName string) error {
 	}
 
 	if !fs.FileExists(fileName) {
-		return errors.New(fmt.Sprintf("%s not found", fileName))
+		return fmt.Errorf("%s not found", fileName)
 	}
 
-	yamlConfig, err := os.ReadFile(fileName)
+	yamlConfig, err := os.ReadFile(fileName) //nolint:gosec // configuration file path provided by user/config
 
 	if err != nil {
 		return err

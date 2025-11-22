@@ -219,7 +219,7 @@ func TestAuthorization(t *testing.T) {
 			Header: make(http.Header),
 		}
 
-		token := "eyJhbGciOiJFZERTQSIsImtpZCI6IjEyMyJ9.eyJpc3MiOiJwb3J0YWw6dGVzdCIsImF1ZCI6Im5vZGU6YWJjIiwiZXhwIjoxNzAwMDAwMDB9.dGVzdC1zaWduYXR1cmUtYnl0ZXM"
+		token := "eyJhbGciOiJFZERTQSIsImtpZCI6IjEyMyJ9.eyJpc3MiOiJwb3J0YWw6dGVzdCIsImF1ZCI6Im5vZGU6YWJjIiwiZXhwIjoxNzAwMDAwMDB9.dGVzdC1zaWduYXR1cmUtYnl0ZXM" //nolint:gosec // static test token
 		c.Request.Header.Add(Auth, "Bearer "+token)
 
 		authType, authToken := Authorization(c)
